@@ -293,12 +293,34 @@ For health questions, give general information and gently remind the user to con
       el.value = "";
       return;
     }
+    // 사진이 너무 크면 서버가 못 받으므로(413 오류) 크기를 줄여서 첨부한다.
     const reader = new FileReader();
     reader.onload = (e) => {
-      attachedImage = { dataUrl: e.target.result, mime: file.type };
-      document.getElementById("previewImg").src = e.target.result;
-      document.getElementById("preview").classList.add("show");
-      updateSendBtn();
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1024; // 가장 긴 변을 1024px로 제한
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) {
+            height = Math.round(height * MAX / width);
+            width = MAX;
+          } else {
+            width = Math.round(width * MAX / height);
+            height = MAX;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        // JPEG 품질 0.8로 압축 → 용량 대폭 감소
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        attachedImage = { dataUrl: dataUrl, mime: "image/jpeg" };
+        document.getElementById("previewImg").src = dataUrl;
+        document.getElementById("preview").classList.add("show");
+        updateSendBtn();
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
     el.value = "";
