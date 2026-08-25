@@ -482,12 +482,24 @@ For health questions, give general information and gently remind the user to con
     const bubble = addBubble("assistant", {});
     bubble.innerHTML = '<span class="typing">●●●</span>';
 
+    // 시간이 걸리면 "아직 처리 중"이라는 걸 알려주는 안내를 단계적으로 띄운다.
+    // (검색이 낀 질문은 몇 초~십몇 초 걸릴 수 있어 화면이 멈춘 것처럼 보일 수 있음)
+    const waitTimer1 = setTimeout(() => {
+      bubble.innerHTML = '<span class="typing">●●● 조금 시간이 걸리고 있어요...</span>';
+    }, 3000);
+    const waitTimer2 = setTimeout(() => {
+      bubble.innerHTML = '<span class="typing">●●● 웹 검색 등을 확인하는 중일 수 있어요. 잠시만요...</span>';
+    }, 8000);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages }),
       });
+
+      clearTimeout(waitTimer1);
+      clearTimeout(waitTimer2);
 
       const data = await res.json();
 
@@ -501,6 +513,8 @@ For health questions, give general information and gently remind the user to con
       scrollToBottom();
       messages.push({ role: "assistant", content: full });
     } catch (err) {
+      clearTimeout(waitTimer1);
+      clearTimeout(waitTimer2);
       bubble.textContent = "⚠️ 연결 오류: " + err;
     }
   }
