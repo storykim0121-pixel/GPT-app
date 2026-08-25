@@ -519,11 +519,27 @@ For health questions, give general information and gently remind the user to con
           if (data === "[DONE]") continue;
           try {
             const json = JSON.parse(data);
-            const delta = json.choices?.[0]?.delta?.content || "";
-            full += delta;
-            // 마크다운을 실시간 변환해서 굵은 글씨·목록 등으로 표시
-            bubble.innerHTML = renderMarkdown(full);
-            scrollToBottom();
+            // Responses API는 type이 있는 이벤트로 온다.
+            if (json.type === "response.output_text.delta") {
+              full += json.delta || "";
+              bubble.innerHTML = renderMarkdown(full);
+              scrollToBottom();
+            } else if (json.type === "response.web_search_call.in_progress"
+                    || json.type === "response.web_search_call.searching") {
+              // 아직 본문이 없을 때만 "검색 중" 표시
+              if (!full) {
+                bubble.innerHTML = '<span class="typing">🔍 웹 검색 중...</span>';
+                scrollToBottom();
+              }
+            } else if (typeof json.delta === "string"
+                       && json.type && json.type.endsWith(".delta")
+                       && !json.type.includes("function")
+                       && !json.type.includes("arguments")) {
+              // 혹시 텍스트 delta 이벤트 이름이 다를 경우를 대비한 보조 처리
+              full += json.delta;
+              bubble.innerHTML = renderMarkdown(full);
+              scrollToBottom();
+            }
           } catch (_) { /* 파싱 실패한 조각은 무시 */ }
         }
       }
