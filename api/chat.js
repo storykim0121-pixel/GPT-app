@@ -51,29 +51,30 @@ export default async function handler(req, res) {
         instructions: instructions,
         input: input,
         tools: [{ type: "web_search" }], // 모델이 필요하다고 판단하면 자동으로 웹 검색
-        stream: true,
+        // stream을 끄고 완성된 응답을 한 번에 받는다 (스트리밍 이벤트 형식 문제 회피, 안정성 우선)
       }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errText = await response.text();
-      return res.status(response.status).json({ error: errText });
+      return res.status(response.status).json({ error: JSON.stringify(data) });
     }
 
-    // 스트리밍 응답을 그대로 브라우저로 흘려보낸다
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(decoder.decode(value));
+    // output 배열에서 실제 답변 텍스트만 뽑아낸다.
+    // (web_search_call 항목은 검색 기록이라 건너뛰고, message 항목의 output_text만 모은다)
+    let text = "";
+    let usedSearch = false;
+    for (const item of data.output || []) {
+      if (item.type === "web_search_call") usedSearch = true;
+      if (item.type === "message" && item.content) {
+        for (const c of item.content) {
+          if (c.type === "output_text") text += c.text;
+        }
+      }
     }
-    res.end();
+
+    res.status(200).json({ text, usedSearch });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
