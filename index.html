@@ -413,13 +413,20 @@ For health questions, give general information and gently remind the user to con
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let full = "";
+      let buffer = ""; // 조각 경계에서 잘린 줄을 보관
       bubble.textContent = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
+        // stream:true 로 디코딩해야 여러 조각에 걸친 한글이 깨지지 않음
+        buffer += decoder.decode(value, { stream: true });
+
+        // 완성된 줄(\n 기준)만 처리하고, 마지막 미완성 줄은 buffer에 남겨둔다
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // 마지막 조각은 아직 안 끝났을 수 있으니 보관
+
+        for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed.startsWith("data:")) continue;
           const data = trimmed.slice(5).trim();
