@@ -450,6 +450,16 @@ For health questions, give general information and gently remind the user to con
     chat.scrollTop = chat.scrollHeight;
   }
 
+  // 긴 답변이 왔을 때 끝부분이 아니라 "시작 부분"이 보이게 스크롤한다.
+  // (실제 ChatGPT처럼 답변을 처음부터 읽을 수 있게)
+  function scrollToMessageTop(bubble) {
+    const wrap = bubble.closest(".msg");
+    if (!wrap) { scrollToBottom(); return; }
+    // 메시지 상단이 화면 위쪽에 오도록, 헤더 높이만큼 여유를 둔다.
+    const target = wrap.offsetTop - 12;
+    chat.scrollTop = Math.max(0, target);
+  }
+
   async function send() {
     const text = input.value.trim();
     if (!text && !attachedImage) return;
@@ -510,7 +520,7 @@ For health questions, give general information and gently remind the user to con
 
       const full = data.text || "(답변을 받지 못했어요. 다시 시도해 주세요.)";
       bubble.innerHTML = renderMarkdown(full);
-      scrollToBottom();
+      scrollToMessageTop(bubble);
       messages.push({ role: "assistant", content: full });
     } catch (err) {
       clearTimeout(waitTimer1);
