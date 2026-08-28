@@ -187,7 +187,10 @@
   .preview-inner {
     display: inline-flex; position: relative;
   }
-  .preview img { max-height: 80px; border-radius: 12px; }
+  .preview img {
+    max-height: 80px; max-width: 120px; height: auto; width: auto;
+    display: block; border-radius: 12px; object-fit: cover;
+  }
   .preview .remove {
     position: absolute; top: -6px; right: -6px;
     width: 22px; height: 22px; border-radius: 50%;
