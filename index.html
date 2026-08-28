@@ -52,6 +52,25 @@
     display: flex; flex-direction: column; gap: 18px;
   }
 
+  /* 맨 아래로 이동 버튼 (스크롤을 위로 올렸을 때만 나타남) */
+  .scroll-bottom-btn {
+    position: fixed;
+    left: 50%; transform: translateX(-50%) translateY(8px);
+    bottom: 84px; /* composer 위에 뜨도록 */
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #ffffff; border: 1px solid #e5e5e5;
+    box-shadow: 0 2px 10px rgba(0,0,0,.12);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 30;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .scroll-bottom-btn.show {
+    opacity: 1; pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .scroll-bottom-btn:active { background: #f2f2f2; }
+
   /* 시작 화면 안내 */
   .welcome {
     flex: 1; display: flex; flex-direction: column;
@@ -77,6 +96,7 @@
   }
   .msg.assistant .bubble {
     padding: 2px 0;
+    max-width: 100%; /* 답변은 말풍선이 아니라 텍스트라 폭 제한을 풀어 표 등을 넓게 쓴다 */
   }
   .bubble img {
     max-width: 220px; border-radius: 14px; margin-bottom: 8px; display: block;
@@ -237,6 +257,10 @@
     </div>
     <div class="chat-inner" id="chatInner"></div>
   </div>
+
+  <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollToBottom()" aria-label="맨 아래로 이동">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+  </button>
 
   <div class="preview" id="preview">
     <div class="preview-inner">
@@ -522,6 +546,7 @@ For health questions, give general information and gently remind the user to con
 
   function scrollToBottom() {
     chat.scrollTop = chat.scrollHeight;
+    updateScrollBtn();
   }
 
   // 긴 답변이 왔을 때 끝부분이 아니라 "시작 부분"이 보이게 스크롤한다.
@@ -532,7 +557,20 @@ For health questions, give general information and gently remind the user to con
     // 메시지 상단이 화면 위쪽에 오도록, 헤더 높이만큼 여유를 둔다.
     const target = wrap.offsetTop - 12;
     chat.scrollTop = Math.max(0, target);
+    updateScrollBtn();
   }
+
+  // 스크롤을 위로 올려서 맨 아래(최신 메시지)가 안 보이면 "맨 아래로" 버튼을 띄운다.
+  const scrollBottomBtn = document.getElementById("scrollBottomBtn");
+  function updateScrollBtn() {
+    const distanceFromBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight;
+    if (distanceFromBottom > 120) {
+      scrollBottomBtn.classList.add("show");
+    } else {
+      scrollBottomBtn.classList.remove("show");
+    }
+  }
+  chat.addEventListener("scroll", updateScrollBtn);
 
   async function send() {
     const text = input.value.trim();
