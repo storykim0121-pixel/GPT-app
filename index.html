@@ -106,6 +106,22 @@
     border-left: 3px solid #ddd; margin: 0 0 12px; padding-left: 12px; color: #555;
   }
   .msg.assistant .bubble a { color: #2964aa; }
+  .msg.assistant .bubble table {
+    border-collapse: collapse; width: max-content; max-width: 100%;
+    margin: 0 0 12px; font-size: 14px;
+  }
+  .msg.assistant .bubble .table-scroll {
+    overflow-x: auto; margin: 0 0 12px; -webkit-overflow-scrolling: touch;
+  }
+  .msg.assistant .bubble .table-scroll table { margin: 0; }
+  .msg.assistant .bubble th,
+  .msg.assistant .bubble td {
+    border: 1px solid #e0e0e0; padding: 8px 12px; text-align: left;
+    white-space: nowrap;
+  }
+  .msg.assistant .bubble th {
+    background: #f7f7f7; font-weight: 700;
+  }
 
   /* 하단 입력 영역 */
   .composer-wrap {
@@ -304,9 +320,44 @@ For health questions, give general information and gently remind the user to con
     function closeList() {
       if (listType) { html += "</" + listType + ">"; listType = null; }
     }
+    // "| a | b | c |" 형태의 한 줄을 셀 배열로 쪼갠다.
+    function splitTableRow(line) {
+      let s = line.trim();
+      if (s.startsWith("|")) s = s.slice(1);
+      if (s.endsWith("|")) s = s.slice(0, -1);
+      return s.split("|").map(c => c.trim());
+    }
+    // "|---|:--:|---|" 같은 구분선인지 확인
+    function isTableDivider(line) {
+      const s = line.trim();
+      if (!s.includes("|") || !s.includes("-")) return false;
+      return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?$/.test(s);
+    }
 
-    for (let raw of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
       const line = raw.trimEnd();
+
+      // 표: 현재 줄이 |로 시작하고, 다음 줄이 구분선(|---|---|)이면 표로 처리
+      if (line.trim().startsWith("|") && i + 1 < lines.length && isTableDivider(lines[i + 1])) {
+        flushParagraph(); closeList();
+        const headerCells = splitTableRow(line);
+        html += '<div class="table-scroll"><table><thead><tr>';
+        for (const cell of headerCells) html += "<th>" + inlineFormat(cell) + "</th>";
+        html += "</tr></thead><tbody>";
+        i += 2; // 헤더 줄 + 구분선 줄 건너뜀
+        while (i < lines.length && lines[i].trim().startsWith("|")) {
+          const rowCells = splitTableRow(lines[i]);
+          html += "<tr>";
+          for (const cell of rowCells) html += "<td>" + inlineFormat(cell) + "</td>";
+          html += "</tr>";
+          i++;
+        }
+        html += "</tbody></table></div>";
+        i--; // for문의 i++와 겹치지 않게 보정
+        continue;
+      }
+
       // 제목 (#, ##, ###)
       const h = line.match(/^(#{1,3})\s+(.*)$/);
       // 순서 없는 목록 (-, *, •)
