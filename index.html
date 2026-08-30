@@ -89,6 +89,8 @@
     max-width: 85%;
     font-size: 16px; line-height: 1.6;
     word-break: break-word; white-space: pre-wrap;
+    -webkit-user-select: text; user-select: text; /* 길게 눌러 복사 가능하게 */
+    -webkit-touch-callout: default;
   }
   .msg.user .bubble {
     background: var(--user-bubble);
@@ -427,8 +429,14 @@ For health questions, give general information and gently remind the user to con
     input.style.height = Math.min(input.scrollHeight, 140) + "px";
     updateSendBtn();
   });
+  // 터치 기기(폰)인지 확인 - 폰에서는 엔터가 줄바꿈, 화면의 보내기 버튼으로만 전송
+  const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      if (isTouchDevice) return; // 폰에서는 그냥 줄바꿈 (기본 동작 그대로 둠)
+      e.preventDefault();
+      send();
+    }
   });
   // 클립보드에 복사된 이미지를 Ctrl+V(또는 길게 눌러 붙여넣기)로 바로 첨부할 수 있게 한다.
   input.addEventListener("paste", (e) => {
