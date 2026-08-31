@@ -278,6 +278,54 @@
   .menu-item:active { background: #f2f2f2; }
   .menu-item svg { flex-shrink: 0; }
 
+  /* 날씨 입력 모달 */
+  .weather-modal {
+    position: absolute;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    left: 16px; right: 16px;
+    background: #ffffff;
+    border-radius: 22px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.16);
+    padding: 20px;
+    transform: translateY(8px) scale(.96);
+    opacity: 0;
+    transition: transform .18s ease, opacity .18s ease;
+  }
+  .menu-overlay.show .weather-modal {
+    transform: translateY(0) scale(1); opacity: 1;
+  }
+  .weather-modal-title { font-size: 17px; font-weight: 700; margin-bottom: 12px; }
+  .weather-loc-input {
+    width: 100%; padding: 12px 14px; border-radius: 12px;
+    border: 1px solid #e0e0e0; font-size: 15px; font-family: inherit;
+    outline: none; margin-bottom: 10px;
+  }
+  .weather-loc-input:focus { border-color: #0d0d0d; }
+  .weather-submit-btn {
+    width: 100%; padding: 12px; border-radius: 12px; border: none;
+    background: #0d0d0d; color: #fff; font-size: 15px; font-weight: 700;
+    cursor: pointer; font-family: inherit; margin-bottom: 8px;
+  }
+  .weather-mylocation-btn {
+    width: 100%; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0;
+    background: #fff; color: var(--text); font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .weather-modal-msg { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 16px; }
+
+  /* 날씨 결과 카드 (대화창에 표시) */
+  .weather-card {
+    display: inline-block; background: #f7f7f8; border-radius: 18px;
+    padding: 18px 22px; max-width: 280px;
+  }
+  .weather-card .wc-location { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+  .weather-card .wc-temp { font-size: 40px; font-weight: 700; line-height: 1.1; }
+  .weather-card .wc-desc { font-size: 15px; margin: 4px 0 10px; }
+  .weather-card .wc-details {
+    display: flex; gap: 16px; font-size: 13px; color: var(--muted);
+    padding-top: 10px; border-top: 1px solid #e5e5e5;
+  }
+
   /* 이미지 미리보기 (전송 전) */
   .preview {
     max-width: 760px; margin: 0 auto 8px;
@@ -377,6 +425,23 @@
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         파일
       </button>
+      <button class="menu-item" onclick="openWeatherModal()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9z"/></svg>
+        날씨
+      </button>
+    </div>
+  </div>
+
+  <!-- 날씨 지역 입력 모달 -->
+  <div class="menu-overlay" id="weatherOverlay" onclick="closeWeatherModal()">
+    <div class="weather-modal" onclick="event.stopPropagation()">
+      <div class="weather-modal-title">날씨 확인</div>
+      <input type="text" id="weatherLocInput" class="weather-loc-input"
+             placeholder="지역명 입력 (예: 고양시 일산동구)"
+             onkeydown="if(event.key==='Enter') submitWeatherLocation()">
+      <button class="weather-submit-btn" onclick="submitWeatherLocation()">확인</button>
+      <button class="weather-mylocation-btn" onclick="useMyLocation()">📍 현재 위치 사용</button>
+      <div class="weather-modal-msg" id="weatherModalMsg"></div>
     </div>
   </div>
 
@@ -582,6 +647,164 @@ For health questions, give general information and gently remind the user to con
     if (type === "camera") document.getElementById("cameraInput").click();
     else if (type === "photo") document.getElementById("photoInput").click();
     else document.getElementById("fileInput").click();
+  }
+
+  // --- 날씨 기능 (AI 모델을 거치지 않고 전용 무료 날씨 API로 직접 조회) ---
+  function openWeatherModal() {
+    closeMenu();
+    document.getElementById("weatherModalMsg").textContent = "";
+    document.getElementById("weatherLocInput").value = "";
+    document.getElementById("weatherOverlay").classList.add("show");
+    setTimeout(() => document.getElementById("weatherLocInput").focus(), 100);
+  }
+  function closeWeatherModal() {
+    document.getElementById("weatherOverlay").classList.remove("show");
+  }
+
+  // WMO 날씨 코드를 한글 설명 + 이모지로 변환
+  function weatherCodeInfo(code) {
+    const map = {
+      0: ["맑음", "☀️"], 1: ["대체로 맑음", "🌤️"], 2: ["구름 조금", "⛅"], 3: ["흐림", "☁️"],
+      45: ["안개", "🌫️"], 48: ["짙은 안개", "🌫️"],
+      51: ["약한 이슬비", "🌦️"], 53: ["이슬비", "🌦️"], 55: ["강한 이슬비", "🌦️"],
+      56: ["어는 이슬비", "🌦️"], 57: ["강한 어는 이슬비", "🌦️"],
+      61: ["약한 비", "🌧️"], 63: ["비", "🌧️"], 65: ["강한 비", "🌧️"],
+      66: ["어는 비", "🌧️"], 67: ["강한 어는 비", "🌧️"],
+      71: ["약한 눈", "🌨️"], 73: ["눈", "🌨️"], 75: ["강한 눈", "🌨️"], 77: ["진눈깨비", "🌨️"],
+      80: ["약한 소나기", "🌧️"], 81: ["소나기", "🌧️"], 82: ["강한 소나기", "🌧️"],
+      85: ["약한 소나기눈", "🌨️"], 86: ["소나기눈", "🌨️"],
+      95: ["뇌우", "⛈️"], 96: ["뇌우(우박 동반)", "⛈️"], 99: ["강한 뇌우(우박 동반)", "⛈️"],
+    };
+    return map[code] || ["알 수 없음", "🌡️"];
+  }
+
+  async function useMyLocation() {
+    const msg = document.getElementById("weatherModalMsg");
+    if (!navigator.geolocation) {
+      msg.textContent = "이 브라우저에서는 위치 사용이 지원되지 않아요.";
+      return;
+    }
+    msg.textContent = "위치 확인 중...";
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        await fetchAndShowWeather(pos.coords.latitude, pos.coords.longitude, "현재 위치");
+      },
+      () => { msg.textContent = "위치 권한을 허용해주시면 바로 확인할 수 있어요."; },
+      { timeout: 8000 }
+    );
+  }
+
+  async function submitWeatherLocation() {
+    const input = document.getElementById("weatherLocInput");
+    const msg = document.getElementById("weatherModalMsg");
+    const query = input.value.trim();
+    if (!query) { msg.textContent = "지역명을 입력해주세요."; return; }
+
+    msg.textContent = "지역을 찾는 중...";
+    try {
+      // 지역명 → 위도/경도 변환 (Open-Meteo 지오코딩, 키 필요 없음)
+      const geoRes = await fetch(
+        "https://geocoding-api.open-meteo.com/v1/search?name=" +
+        encodeURIComponent(query) + "&count=1&language=ko&format=json"
+      );
+      const geoData = await geoRes.json();
+      if (!geoData.results || geoData.results.length === 0) {
+        msg.textContent = "'" + query + "' 지역을 찾지 못했어요. 다른 이름으로 시도해보세요 (예: 고양시).";
+        return;
+      }
+      const place = geoData.results[0];
+      const label = [place.name, place.admin1].filter(Boolean).join(", ");
+      await fetchAndShowWeather(place.latitude, place.longitude, label);
+    } catch (err) {
+      msg.textContent = "지역 검색 중 오류가 발생했어요. 다시 시도해주세요.";
+    }
+  }
+
+  async function fetchAndShowWeather(lat, lon, label) {
+    const msg = document.getElementById("weatherModalMsg");
+    msg.textContent = "날씨 확인 중...";
+    try {
+      const res = await fetch(
+        "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon +
+        "&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m" +
+        "&timezone=Asia%2FSeoul"
+      );
+      const data = await res.json();
+      const cur = data.current;
+      if (!cur) { msg.textContent = "날씨 정보를 가져오지 못했어요."; return; }
+
+      const [desc, emoji] = weatherCodeInfo(cur.weather_code);
+      closeWeatherModal();
+      addWeatherBubble({
+        label, emoji, desc,
+        temp: Math.round(cur.temperature_2m),
+        humidity: cur.relative_humidity_2m,
+        precipitation: cur.precipitation,
+        wind: cur.wind_speed_10m,
+      });
+    } catch (err) {
+      msg.textContent = "날씨 정보를 가져오지 못했어요. 다시 시도해주세요.";
+    }
+  }
+
+  // 날씨 카드를 대화창에 표시하고, 이어지는 대화(예: "우산 챙겨야해?")에서
+  // AI가 참고할 수 있도록 대화 기록에도 짧은 요약을 남겨둔다.
+  function addWeatherBubble(w) {
+    const bubble = addBubble("assistant", {});
+    bubble.innerHTML = `
+      <div class="weather-card">
+        <div class="wc-location">${w.label}</div>
+        <div class="wc-temp">${w.emoji} ${w.temp}°</div>
+        <div class="wc-desc">${w.desc}</div>
+        <div class="wc-details">
+          <span>💧 습도 ${w.humidity}%</span>
+          <span>🌬️ 풍속 ${w.wind}km/h</span>
+        </div>
+      </div>`;
+    scrollToMessageTop(bubble);
+
+    // 정확한 데이터를 근거로, 지금 쓰는 AI(GPT/Claude)가 자연스러운 조언을 덧붙이게 한다.
+    // (검색에 의존하지 않으므로 숫자는 항상 정확하고, 문장만 AI가 자연스럽게 다듬어줌)
+    requestWeatherAdvice(w);
+  }
+
+  async function requestWeatherAdvice(w) {
+    if (!READY_PROVIDERS[currentProvider]) return; // 아직 연결 안 된 provider면 조언 생략
+
+    const userText = `${w.label} 날씨 알려줘`;
+    const dataNote = `\n\n(참고: 방금 확인된 정확한 날씨 데이터 — 날씨: ${w.desc}, 기온: ${w.temp}°C, ` +
+      `습도: ${w.humidity}%, 강수량: ${w.precipitation}mm, 풍속: ${w.wind}km/h. ` +
+      `이 데이터만 사실로 사용해서 우산·옷차림 등 실용적인 조언을 2~3문장으로 자연스럽게 알려줘. ` +
+      `이 데이터에 없는 내용(주의보 등)은 추측해서 말하지 마.)`;
+
+    addBubble("user", { text: userText });
+    conversations[currentProvider].push({ role: "user", content: userText + dataNote });
+
+    const bubble = addBubble("assistant", {});
+    bubble.innerHTML = '<span class="typing">●●●</span>';
+
+    try {
+      const endpoints = { gpt: "/api/chat", claude: "/api/chat-claude", perplexity: "/api/chat-perplexity" };
+      const res = await fetch(endpoints[currentProvider], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: conversations[currentProvider],
+          model: selectedModel[currentProvider],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        bubble.textContent = "⚠️ 조언을 가져오지 못했어요: " + (data.error || res.status);
+        return;
+      }
+      const full = data.text || "";
+      bubble.innerHTML = renderMarkdown(full);
+      scrollToMessageTop(bubble);
+      conversations[currentProvider].push({ role: "assistant", content: full });
+    } catch (err) {
+      bubble.textContent = "⚠️ 조언을 가져오지 못했어요.";
+    }
   }
 
   function onFile(el) {
