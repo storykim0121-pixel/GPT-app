@@ -139,6 +139,12 @@
   }
   .welcome h1 { font-size: 24px; font-weight: 600; color: var(--text); }
   .welcome p { font-size: 15px; }
+  .welcome .provider-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 16px;
+    background: #f0f0f0; color: #555;
+    font-size: 13px; font-weight: 600; margin-bottom: 14px;
+  }
   .welcome .tip {
     font-size: 13px; color: var(--muted); margin-top: 14px;
     background: #f7f7f8; padding: 10px 16px; border-radius: 12px;
@@ -397,8 +403,8 @@
 
   <div class="chat" id="chat">
     <div class="welcome" id="welcome">
+      <div class="provider-badge" id="providerBadge">🤖 빠른 대화와 사진 상담에 유용한 앱</div>
       <h1>무엇을 도와드릴까요?</h1>
-      <p>고민이나 궁금한 걸 물어보세요.</p>
       <p class="tip">💡 대화가 길어질수록 비용이 늘어나요. 주제가 바뀌면 위의 새 대화 버튼으로 초기화하면 절약할 수 있어요.</p>
     </div>
     <div class="chat-inner" id="chatInner"></div>
@@ -913,6 +919,11 @@ For health questions, give general information and gently remind the user to con
   }
 
   const PROVIDER_NAMES = { gpt: "My ChatGPT", claude: "My Claude", perplexity: "My Perplexity" };
+  const PROVIDER_BADGES = {
+    gpt: "🤖 빠른 대화와 사진 상담에 유용한 앱",
+    claude: "🧠 차분하고 꼼꼼한 설명에 유용한 앱",
+    perplexity: "🔎 최신 정보 검색과 출처 확인에 유용한 앱",
+  };
 
   // 탭을 눌러 다른 AI로 전환한다. 대화 기록은 provider별로 따로 보관되어 있다가 다시 보인다.
   function switchProvider(provider) {
@@ -927,6 +938,7 @@ For health questions, give general information and gently remind the user to con
       btn.classList.toggle("active", btn.dataset.provider === provider);
     });
     document.querySelector(".header-title").textContent = PROVIDER_NAMES[provider];
+    document.getElementById("providerBadge").textContent = PROVIDER_BADGES[provider];
     updateModelBtnLabel();
     closeModelMenu();
 
