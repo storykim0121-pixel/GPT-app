@@ -366,8 +366,8 @@
     <button class="provider-tab" data-provider="claude" onclick="switchProvider('claude')">
       <span class="dot"></span>Claude
     </button>
-    <button class="provider-tab soon" data-provider="perplexity" onclick="switchProvider('perplexity')">
-      <span class="dot"></span>Perplexity <span style="font-size:11px">(준비중)</span>
+    <button class="provider-tab" data-provider="perplexity" onclick="switchProvider('perplexity')">
+      <span class="dot"></span>Perplexity
     </button>
   </div>
 
@@ -469,7 +469,7 @@ For health questions, give general information and gently remind the user to con
     perplexity: [{ role: "system", content: SYSTEM_PROMPT }],
   };
   // 아직 연결 안 된 provider (1단계: GPT만 실제 연결)
-  const READY_PROVIDERS = { gpt: true, claude: true, perplexity: false };
+  const READY_PROVIDERS = { gpt: true, claude: true, perplexity: true };
   let attachedImage = null; // { dataUrl, mime }
 
   // provider별로 고를 수 있는 모델 목록. 첫 번째가 기본(저렴이)값.
