@@ -139,6 +139,11 @@
   }
   .welcome h1 { font-size: 24px; font-weight: 600; color: var(--text); }
   .welcome p { font-size: 15px; }
+  .welcome .tip {
+    font-size: 13px; color: var(--muted); margin-top: 14px;
+    background: #f7f7f8; padding: 10px 16px; border-radius: 12px;
+    max-width: 320px;
+  }
 
   /* 메시지 */
   .msg { display: flex; width: 100%; }
@@ -394,6 +399,7 @@
     <div class="welcome" id="welcome">
       <h1>무엇을 도와드릴까요?</h1>
       <p>고민이나 궁금한 걸 물어보세요.</p>
+      <p class="tip">💡 대화가 길어질수록 비용이 늘어나요. 주제가 바뀌면 위의 새 대화 버튼으로 초기화하면 절약할 수 있어요.</p>
     </div>
     <div class="chat-inner" id="chatInner"></div>
   </div>
