@@ -326,6 +326,17 @@
     padding-top: 10px; border-top: 1px solid #e5e5e5;
   }
 
+  /* 후속 질문 추천 (Perplexity) */
+  .related-questions {
+    margin-top: 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .related-q-btn {
+    text-align: left; padding: 10px 14px; border-radius: 12px;
+    border: 1px solid #e5e5e5; background: #fff; color: var(--text);
+    font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  .related-q-btn:active { background: #f5f5f5; }
+
   /* 이미지 미리보기 (전송 전) */
   .preview {
     max-width: 760px; margin: 0 auto 8px;
@@ -1123,6 +1134,21 @@ For health questions, give general information and gently remind the user to con
 
       const full = data.text || "(답변을 받지 못했어요. 다시 시도해 주세요.)";
       bubble.innerHTML = renderMarkdown(full);
+
+      // Perplexity가 후속 질문을 추천해주면, 눌러서 바로 이어 물어볼 수 있게 버튼으로 보여준다.
+      if (Array.isArray(data.relatedQuestions) && data.relatedQuestions.length) {
+        const rq = document.createElement("div");
+        rq.className = "related-questions";
+        for (const q of data.relatedQuestions) {
+          const qBtn = document.createElement("button");
+          qBtn.className = "related-q-btn";
+          qBtn.textContent = q;
+          qBtn.onclick = () => { input.value = q; send(); };
+          rq.appendChild(qBtn);
+        }
+        bubble.appendChild(rq);
+      }
+
       scrollToMessageTop(bubble);
       conversations[currentProvider].push({ role: "assistant", content: full });
     } catch (err) {
