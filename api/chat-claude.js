@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const { messages, model } = req.body;
 
     // 허용된 모델만 쓰도록 검증. 지정 안 하거나 목록에 없으면 저렴한 기본값(Haiku)으로.
-    const ALLOWED_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-5"];
+    const ALLOWED_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-5"];
     const selectedModel = ALLOWED_MODELS.includes(model) ? model : "claude-haiku-4-5-20251001";
 
     // OpenAI 형식(messages 배열에 system 포함)을 Claude 형식(system 별도 + messages)으로 변환.
