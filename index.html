@@ -1001,6 +1001,13 @@ For health questions, give general information and gently remind the user to con
   }
   chat.addEventListener("scroll", updateScrollBtn);
 
+  // 날씨 관련 질문인지 감지 (간단한 키워드 매칭)
+  function isWeatherQuery(text) {
+    const keywords = ["날씨", "기온", "몇 도", "몇도", "비 와", "비와", "비 올", "비올",
+      "눈 올", "눈올", "우산", "미세먼지", "황사", "폭염", "한파", "체감온도"];
+    return keywords.some(k => text.includes(k));
+  }
+
   async function send() {
     const text = input.value.trim();
     if (!text && !attachedImage) return;
@@ -1010,6 +1017,25 @@ For health questions, give general information and gently remind the user to con
       text: text,
       imageUrl: attachedImage ? attachedImage.dataUrl : null,
     });
+
+    // 날씨 관련 질문이면 AI를 거치지 않고 정확한 날씨 기능으로 안내한다.
+    // (검색 기반 답변은 날짜·수치가 부정확할 수 있어서, 항상 정확한 전용 기능을 쓰도록 유도)
+    if (!attachedImage && isWeatherQuery(text)) {
+      conversations[currentProvider].push({ role: "user", content: text });
+      input.value = "";
+      input.style.height = "auto";
+      updateSendBtn();
+
+      const guideText = "날씨는 왼쪽 아래 **+ 버튼 → 날씨**를 눌러 확인해주세요! 실시간 관측 데이터라 채팅으로 물어보는 것보다 정확해요 🌤️";
+      const bubble = addBubble("assistant", {});
+      bubble.innerHTML = renderMarkdown(guideText);
+      scrollToMessageTop(bubble);
+      conversations[currentProvider].push({ role: "assistant", content: guideText });
+
+      // 바로 이어서 날씨 모달을 열어 지역만 입력하면 되게 도와준다.
+      setTimeout(() => openWeatherModal(), 500);
+      return;
+    }
 
     // API용 메시지 구성
     let userContent;
