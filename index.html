@@ -348,20 +348,24 @@
   }
   .related-q-btn:active { background: #f5f5f5; }
 
-  /* 이미지 미리보기 (전송 전) */
+  /* 이미지 미리보기 (전송 전, 여러 장 가능) */
   .preview {
     max-width: 760px; margin: 0 auto 8px;
+    padding: 0 16px;
     display: none;
+    gap: 8px;
+    overflow-x: auto;
   }
-  .preview.show { display: block; }
-  .preview-inner {
-    display: inline-flex; position: relative;
+  .preview.show { display: flex; }
+  .preview-item {
+    flex-shrink: 0;
+    position: relative;
   }
-  .preview img {
-    max-height: 80px; max-width: 120px; height: auto; width: auto;
+  .preview-item img {
+    height: 80px; width: 80px;
     display: block; border-radius: 12px; object-fit: cover;
   }
-  .preview .remove {
+  .preview-item .remove {
     position: absolute; top: -6px; right: -6px;
     width: 22px; height: 22px; border-radius: 50%;
     background: #000; color: #fff; border: 2px solid #fff;
@@ -414,12 +418,7 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
   </button>
 
-  <div class="preview" id="preview">
-    <div class="preview-inner">
-      <img id="previewImg" alt="첨부 이미지">
-      <div class="remove" onclick="removeImage()">✕</div>
-    </div>
-  </div>
+  <div class="preview" id="preview"></div>
 
   <div class="composer-wrap">
     <div class="composer">
@@ -493,7 +492,8 @@ For health questions, give general information and gently remind the user to con
   };
   // 아직 연결 안 된 provider (1단계: GPT만 실제 연결)
   const READY_PROVIDERS = { gpt: true, claude: true, perplexity: true };
-  let attachedImage = null; // { dataUrl, mime }
+  let attachedImages = []; // [{ dataUrl, mime }, ...] 여러 장 첨부 가능
+  const MAX_IMAGES = 4; // 한 번에 첨부 가능한 최대 장수
 
   // provider별로 고를 수 있는 모델 목록. 첫 번째가 기본(저렴이)값.
   const MODEL_OPTIONS = {
@@ -651,7 +651,7 @@ For health questions, give general information and gently remind the user to con
     }
   });
   function updateSendBtn() {
-    sendBtn.disabled = input.value.trim() === "" && !attachedImage;
+    sendBtn.disabled = input.value.trim() === "" && attachedImages.length === 0;
   }
 
   // + 메뉴
@@ -868,10 +868,14 @@ For health questions, give general information and gently remind the user to con
     el.value = "";
   }
 
-  // 파일 선택이든 클립보드 붙여넣기든, 이미지 파일 하나를 받아 축소·압축 후 첨부한다.
+  // 파일 선택이든 클립보드 붙여넣기든, 이미지 파일 하나를 받아 축소·압축 후 첨부 목록에 추가한다.
   function processImageFile(file) {
     if (!file.type.startsWith("image/")) {
       alert("지금은 이미지 파일만 지원해요.");
+      return;
+    }
+    if (attachedImages.length >= MAX_IMAGES) {
+      alert(`사진은 한 번에 최대 ${MAX_IMAGES}장까지 첨부할 수 있어요.`);
       return;
     }
     // 사진이 너무 크면 서버가 못 받으므로(413 오류) 크기를 줄여서 첨부한다.
@@ -896,18 +900,36 @@ For health questions, give general information and gently remind the user to con
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
         // JPEG 품질 0.8로 압축 → 용량 대폭 감소
         const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-        attachedImage = { dataUrl: dataUrl, mime: "image/jpeg" };
-        document.getElementById("previewImg").src = dataUrl;
-        document.getElementById("preview").classList.add("show");
+        attachedImages.push({ dataUrl: dataUrl, mime: "image/jpeg" });
+        renderPreview();
         updateSendBtn();
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   }
-  function removeImage() {
-    attachedImage = null;
-    document.getElementById("preview").classList.remove("show");
+
+  // 첨부된 사진 목록을 입력창 위 미리보기 줄에 그린다.
+  function renderPreview() {
+    const preview = document.getElementById("preview");
+    preview.innerHTML = "";
+    attachedImages.forEach((imgData, i) => {
+      const item = document.createElement("div");
+      item.className = "preview-item";
+      item.innerHTML = `<img src="${imgData.dataUrl}" alt="첨부 이미지 ${i + 1}">
+        <div class="remove" onclick="removeImage(${i})">✕</div>`;
+      preview.appendChild(item);
+    });
+    preview.classList.toggle("show", attachedImages.length > 0);
+  }
+
+  function removeImage(index) {
+    if (typeof index === "number") {
+      attachedImages.splice(index, 1); // 특정 한 장만 제거
+    } else {
+      attachedImages = []; // 인자 없이 호출되면 전체 제거 (예: 메시지 전송 후)
+    }
+    renderPreview();
     updateSendBtn();
   }
 
@@ -997,10 +1019,10 @@ For health questions, give general information and gently remind the user to con
           addBubble("user", { text: m.content });
         } else {
           const textPart = m.content.find(p => p.type === "text");
-          const imgPart = m.content.find(p => p.type === "image_url");
+          const imgParts = m.content.filter(p => p.type === "image_url");
           addBubble("user", {
             text: textPart ? textPart.text : "",
-            imageUrl: imgPart ? imgPart.image_url.url : null,
+            imageUrls: imgParts.map(p => p.image_url.url),
           });
         }
       } else if (m.role === "assistant") {
@@ -1017,10 +1039,21 @@ For health questions, give general information and gently remind the user to con
     wrap.className = "msg " + role;
     const bubble = document.createElement("div");
     bubble.className = "bubble";
-    if (opts.imageUrl) {
-      const img = document.createElement("img");
-      img.src = opts.imageUrl;
-      bubble.appendChild(img);
+    // 여러 장(imageUrls) 우선, 없으면 기존 방식(imageUrl 한 장)도 지원
+    const urls = opts.imageUrls || (opts.imageUrl ? [opts.imageUrl] : []);
+    if (urls.length) {
+      const imgWrap = document.createElement("div");
+      imgWrap.style.display = "flex";
+      imgWrap.style.flexWrap = "wrap";
+      imgWrap.style.gap = "6px";
+      imgWrap.style.marginBottom = urls.length ? "8px" : "0";
+      urls.forEach((url) => {
+        const img = document.createElement("img");
+        img.src = url;
+        img.style.marginBottom = "0";
+        imgWrap.appendChild(img);
+      });
+      bubble.appendChild(imgWrap);
     }
     if (opts.text) {
       const span = document.createElement("span");
@@ -1070,17 +1103,17 @@ For health questions, give general information and gently remind the user to con
 
   async function send() {
     const text = input.value.trim();
-    if (!text && !attachedImage) return;
+    if (!text && attachedImages.length === 0) return;
 
     // 사용자 메시지 화면에 표시
     addBubble("user", {
       text: text,
-      imageUrl: attachedImage ? attachedImage.dataUrl : null,
+      imageUrls: attachedImages.map(img => img.dataUrl),
     });
 
     // 날씨 관련 질문이면 AI를 거치지 않고 정확한 날씨 기능으로 안내한다.
     // (검색 기반 답변은 날짜·수치가 부정확할 수 있어서, 항상 정확한 전용 기능을 쓰도록 유도)
-    if (!attachedImage && isWeatherQuery(text)) {
+    if (attachedImages.length === 0 && isWeatherQuery(text)) {
       conversations[currentProvider].push({ role: "user", content: text });
       input.value = "";
       input.style.height = "auto";
@@ -1097,13 +1130,13 @@ For health questions, give general information and gently remind the user to con
       return;
     }
 
-    // API용 메시지 구성
+    // API용 메시지 구성 (사진 여러 장 지원)
     let userContent;
-    if (attachedImage) {
-      userContent = [
-        { type: "text", text: text || "이 이미지를 봐줘." },
-        { type: "image_url", image_url: { url: attachedImage.dataUrl } },
-      ];
+    if (attachedImages.length > 0) {
+      userContent = [{ type: "text", text: text || "이 이미지를 봐줘." }];
+      for (const img of attachedImages) {
+        userContent.push({ type: "image_url", image_url: { url: img.dataUrl } });
+      }
     } else {
       userContent = text;
     }
