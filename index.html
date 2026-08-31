@@ -469,8 +469,8 @@
 
   <!-- 숨겨진 파일 입력들 -->
   <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="onFile(this)">
-  <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="onFile(this)">
-  <input type="file" id="fileInput" accept="image/*,.pdf,.txt" style="display:none" onchange="onFile(this)">
+  <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="onFile(this)">
+  <input type="file" id="fileInput" accept="image/*,.pdf,.txt" multiple style="display:none" onchange="onFile(this)">
 
 <script>
   const SYSTEM_PROMPT = `You are an assistant similar to ChatGPT.
@@ -862,9 +862,17 @@ For health questions, give general information and gently remind the user to con
   }
 
   function onFile(el) {
-    const file = el.files[0];
-    if (!file) return;
-    processImageFile(file);
+    const files = Array.from(el.files || []);
+    if (!files.length) return;
+
+    const remaining = MAX_IMAGES - attachedImages.length;
+    const toAdd = files.slice(0, Math.max(0, remaining));
+    if (files.length > toAdd.length) {
+      alert(`사진은 한 번에 최대 ${MAX_IMAGES}장까지 첨부할 수 있어요. 앞의 ${toAdd.length}장만 추가할게요.`);
+    }
+    for (const file of toAdd) {
+      processImageFile(file);
+    }
     el.value = "";
   }
 
@@ -1183,8 +1191,28 @@ For health questions, give general information and gently remind the user to con
         return;
       }
 
-      const full = data.text || "(답변을 받지 못했어요. 다시 시도해 주세요.)";
+      const full = data.text || (data.generatedImage ? "" : "(답변을 받지 못했어요. 다시 시도해 주세요.)");
       bubble.innerHTML = renderMarkdown(full);
+
+      // GPT가 이미지를 생성했으면(base64) 화면에 바로 보여준다.
+      if (data.generatedImage) {
+        const img = document.createElement("img");
+        img.src = "data:image/png;base64," + data.generatedImage;
+        img.style.maxWidth = "260px";
+        img.style.borderRadius = "14px";
+        img.style.display = "block";
+        img.style.marginTop = full ? "10px" : "0";
+        bubble.appendChild(img);
+
+        if (data.imageQuality === "medium") {
+          const badge = document.createElement("div");
+          badge.textContent = "✨ 중화질로 생성했어요";
+          badge.style.fontSize = "12px";
+          badge.style.color = "#888";
+          badge.style.marginTop = "4px";
+          bubble.appendChild(badge);
+        }
+      }
 
       // Perplexity가 후속 질문을 추천해주면, 눌러서 바로 이어 물어볼 수 있게 버튼으로 보여준다.
       if (Array.isArray(data.relatedQuestions) && data.relatedQuestions.length) {
@@ -1201,7 +1229,10 @@ For health questions, give general information and gently remind the user to con
       }
 
       scrollToMessageTop(bubble);
-      conversations[currentProvider].push({ role: "assistant", content: full });
+      // 대화 기록에는 이미지가 생성됐다는 사실을 짧게 남겨(이미지 자체는 용량이 커서 기록에는 안 남김)
+      // 다음 대화에서 맥락이 이어지게 한다.
+      const historyText = full || (data.generatedImage ? "(이미지를 생성했습니다.)" : full);
+      conversations[currentProvider].push({ role: "assistant", content: historyText });
     } catch (err) {
       clearTimeout(waitTimer1);
       clearTimeout(waitTimer2);
