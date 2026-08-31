@@ -40,6 +40,65 @@
     font-size: 17px; font-weight: 600; color: var(--text);
   }
 
+  /* AI 선택 탭 */
+  .provider-tabs {
+    display: flex; gap: 6px;
+    padding: 4px 16px 10px;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .provider-tab {
+    flex-shrink: 0;
+    padding: 7px 16px; border-radius: 18px; border: 1px solid #e5e5e5;
+    background: #fff; color: var(--muted);
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+    display: flex; align-items: center; gap: 6px;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .provider-tab.active {
+    background: #0d0d0d; color: #fff; border-color: #0d0d0d;
+  }
+  .provider-tab .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: #ccc;
+  }
+  .provider-tab.active .dot { background: #4ade80; }
+  .provider-tab.soon { opacity: .55; cursor: default; }
+
+  /* 모델 선택 버튼 */
+  .model-bar {
+    display: flex; justify-content: flex-end;
+    padding: 0 16px 8px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .model-btn {
+    display: flex; align-items: center; gap: 4px;
+    padding: 5px 10px; border-radius: 14px; border: 1px solid #e5e5e5;
+    background: #fff; color: var(--muted);
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  .model-btn:active { background: #f5f5f5; }
+  .model-menu {
+    position: absolute; top: 34px; right: 16px;
+    background: #fff; border-radius: 14px;
+    box-shadow: 0 6px 28px rgba(0,0,0,.15);
+    padding: 6px; min-width: 220px;
+    display: none; z-index: 25;
+  }
+  .model-menu.show { display: block; }
+  .model-option {
+    display: flex; flex-direction: column; align-items: flex-start;
+    width: 100%; padding: 10px 12px; border: none; background: transparent;
+    border-radius: 10px; cursor: pointer; text-align: left;
+    font-family: inherit;
+  }
+  .model-option:active { background: #f2f2f2; }
+  .model-option.selected { background: #f5f5f5; }
+  .model-option .name { font-size: 14px; font-weight: 700; color: #0d0d0d; }
+  .model-option .desc { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
   /* 대화 영역 */
   .chat {
     flex: 1; overflow-y: auto;
@@ -252,6 +311,26 @@
     </button>
   </header>
 
+  <div class="provider-tabs" id="providerTabs">
+    <button class="provider-tab active" data-provider="gpt" onclick="switchProvider('gpt')">
+      <span class="dot"></span>GPT
+    </button>
+    <button class="provider-tab soon" data-provider="claude" onclick="switchProvider('claude')">
+      <span class="dot"></span>Claude <span style="font-size:11px">(준비중)</span>
+    </button>
+    <button class="provider-tab soon" data-provider="perplexity" onclick="switchProvider('perplexity')">
+      <span class="dot"></span>Perplexity <span style="font-size:11px">(준비중)</span>
+    </button>
+  </div>
+
+  <div class="model-bar">
+    <button class="model-btn" id="modelBtn" onclick="toggleModelMenu()">
+      <span id="modelBtnLabel">Luna</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="model-menu" id="modelMenu"></div>
+  </div>
+
   <div class="chat" id="chat">
     <div class="welcome" id="welcome">
       <h1>무엇을 도와드릴까요?</h1>
@@ -317,8 +396,39 @@ Response style:
 When the user shares an image (e.g. clothing), describe what you see and give honest, helpful feedback.
 For health questions, give general information and gently remind the user to consult a medical professional for anything important.`;
 
-  let messages = [{ role: "system", content: SYSTEM_PROMPT }];
+  // provider(gpt/claude/perplexity)마다 대화 기록을 따로 보관한다.
+  let currentProvider = "gpt";
+  const conversations = {
+    gpt: [{ role: "system", content: SYSTEM_PROMPT }],
+    claude: [{ role: "system", content: SYSTEM_PROMPT }],
+    perplexity: [{ role: "system", content: SYSTEM_PROMPT }],
+  };
+  // 아직 연결 안 된 provider (1단계: GPT만 실제 연결)
+  const READY_PROVIDERS = { gpt: true, claude: false, perplexity: false };
   let attachedImage = null; // { dataUrl, mime }
+
+  // provider별로 고를 수 있는 모델 목록. 첫 번째가 기본(저렴이)값.
+  const MODEL_OPTIONS = {
+    gpt: [
+      { id: "gpt-5.6-luna", label: "Luna", desc: "빠르고 저렴 · 기본값" },
+      { id: "gpt-5.6-terra", label: "Terra", desc: "균형 잡힌 중간 모델" },
+      { id: "gpt-5.6-sol", label: "Sol", desc: "가장 강력 · 비용 높음" },
+    ],
+    claude: [
+      { id: "claude-haiku-4-5", label: "Haiku", desc: "빠르고 저렴 · 기본값" },
+      { id: "claude-sonnet-5", label: "Sonnet", desc: "균형 잡힌 중간 모델" },
+    ],
+    perplexity: [
+      { id: "sonar", label: "Sonar", desc: "빠르고 저렴 · 기본값(항상 검색 포함)" },
+      { id: "sonar-pro", label: "Sonar Pro", desc: "더 깊은 검색·분석" },
+    ],
+  };
+  // 현재 선택된 모델 (provider별로 하나씩). 처음엔 각 provider의 기본(0번째) 모델.
+  const selectedModel = {
+    gpt: MODEL_OPTIONS.gpt[0].id,
+    claude: MODEL_OPTIONS.claude[0].id,
+    perplexity: MODEL_OPTIONS.perplexity[0].id,
+  };
 
   // 마크다운(**굵게**, 목록, 제목 등)을 HTML로 변환한다. 외부 라이브러리 없이 직접 처리.
   function escapeHtml(s) {
@@ -524,10 +634,97 @@ For health questions, give general information and gently remind the user to con
   }
 
   function newChat() {
-    messages = [{ role: "system", content: SYSTEM_PROMPT }];
+    conversations[currentProvider] = [{ role: "system", content: SYSTEM_PROMPT }];
     chatInner.innerHTML = "";
     welcome.style.display = "flex";
     removeImage();
+  }
+
+  const PROVIDER_NAMES = { gpt: "My ChatGPT", claude: "My Claude", perplexity: "My Perplexity" };
+
+  // 탭을 눌러 다른 AI로 전환한다. 대화 기록은 provider별로 따로 보관되어 있다가 다시 보인다.
+  function switchProvider(provider) {
+    if (!READY_PROVIDERS[provider]) {
+      alert((provider === "claude" ? "Claude" : "Perplexity") + "는 곧 연결될 예정이에요. 조금만 기다려주세요!");
+      return;
+    }
+    currentProvider = provider;
+
+    // 탭 활성 표시 갱신
+    document.querySelectorAll(".provider-tab").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.provider === provider);
+    });
+    document.querySelector(".header-title").textContent = PROVIDER_NAMES[provider];
+    updateModelBtnLabel();
+    closeModelMenu();
+
+    // 해당 provider의 대화 기록을 화면에 다시 그린다
+    redrawConversation();
+  }
+
+  // --- 모델 선택 버튼 ---
+  function updateModelBtnLabel() {
+    const opts = MODEL_OPTIONS[currentProvider];
+    const cur = opts.find(o => o.id === selectedModel[currentProvider]) || opts[0];
+    document.getElementById("modelBtnLabel").textContent = cur.label;
+  }
+  function renderModelMenu() {
+    const menu = document.getElementById("modelMenu");
+    const opts = MODEL_OPTIONS[currentProvider];
+    menu.innerHTML = opts.map(o => {
+      const isSel = o.id === selectedModel[currentProvider];
+      return `<button class="model-option${isSel ? " selected" : ""}" onclick="selectModel('${o.id}')">
+        <span class="name">${o.label}${isSel ? " ✓" : ""}</span>
+        <span class="desc">${o.desc}</span>
+      </button>`;
+    }).join("");
+  }
+  function toggleModelMenu() {
+    const menu = document.getElementById("modelMenu");
+    if (menu.classList.contains("show")) { closeModelMenu(); return; }
+    renderModelMenu();
+    menu.classList.add("show");
+  }
+  function closeModelMenu() {
+    document.getElementById("modelMenu").classList.remove("show");
+  }
+  function selectModel(id) {
+    selectedModel[currentProvider] = id;
+    updateModelBtnLabel();
+    closeModelMenu();
+  }
+  // 메뉴 바깥을 누르면 닫히게
+  document.addEventListener("click", (e) => {
+    const bar = e.target.closest(".model-bar");
+    if (!bar) closeModelMenu();
+  });
+
+  // conversations[currentProvider]의 내용을 화면에 다시 그린다 (탭 전환 시 사용)
+  function redrawConversation() {
+    chatInner.innerHTML = "";
+    const history = conversations[currentProvider];
+    const hasContent = history.some(m => m.role !== "system");
+    welcome.style.display = hasContent ? "none" : "flex";
+
+    for (const m of history) {
+      if (m.role === "system") continue;
+      if (m.role === "user") {
+        if (typeof m.content === "string") {
+          addBubble("user", { text: m.content });
+        } else {
+          const textPart = m.content.find(p => p.type === "text");
+          const imgPart = m.content.find(p => p.type === "image_url");
+          addBubble("user", {
+            text: textPart ? textPart.text : "",
+            imageUrl: imgPart ? imgPart.image_url.url : null,
+          });
+        }
+      } else if (m.role === "assistant") {
+        const b = addBubble("assistant", {});
+        b.innerHTML = renderMarkdown(m.content);
+      }
+    }
+    scrollToBottom();
   }
 
   function addBubble(role, opts = {}) {
@@ -600,7 +797,7 @@ For health questions, give general information and gently remind the user to con
     } else {
       userContent = text;
     }
-    messages.push({ role: "user", content: userContent });
+    conversations[currentProvider].push({ role: "user", content: userContent });
 
     // 입력창 초기화
     input.value = "";
@@ -622,10 +819,15 @@ For health questions, give general information and gently remind the user to con
     }, 8000);
 
     try {
-      const res = await fetch("/api/chat", {
+      // provider마다 다른 서버 엔드포인트를 호출한다 (2·3단계에서 claude/perplexity 추가 예정)
+      const endpoints = { gpt: "/api/chat", claude: "/api/chat-claude", perplexity: "/api/chat-perplexity" };
+      const res = await fetch(endpoints[currentProvider], {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({
+          messages: conversations[currentProvider],
+          model: selectedModel[currentProvider],
+        }),
       });
 
       clearTimeout(waitTimer1);
@@ -641,7 +843,7 @@ For health questions, give general information and gently remind the user to con
       const full = data.text || "(답변을 받지 못했어요. 다시 시도해 주세요.)";
       bubble.innerHTML = renderMarkdown(full);
       scrollToMessageTop(bubble);
-      messages.push({ role: "assistant", content: full });
+      conversations[currentProvider].push({ role: "assistant", content: full });
     } catch (err) {
       clearTimeout(waitTimer1);
       clearTimeout(waitTimer2);
