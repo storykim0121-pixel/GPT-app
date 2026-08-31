@@ -19,6 +19,22 @@ export default async function handler(req, res) {
     const ALLOWED_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"];
     const selectedModel = ALLOWED_MODELS.includes(model) ? model : "gpt-5.6-luna";
 
+    // 사용자의 마지막 메시지에 "인스타/고화질/선명하게" 같은 단어가 있으면
+    // 이미지 생성 화질을 한 단계 올린다 (기본은 저화질로 비용을 아낌).
+    const HQ_KEYWORDS = ["인스타", "인스타그램", "고화질", "고해상도", "선명하게", "선명한", "화질 좋게", "퀄리티 좋게"];
+    let lastUserText = "";
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    if (lastUserMsg) {
+      if (typeof lastUserMsg.content === "string") {
+        lastUserText = lastUserMsg.content;
+      } else if (Array.isArray(lastUserMsg.content)) {
+        const t = lastUserMsg.content.find((p) => p.type === "text");
+        lastUserText = t ? t.text : "";
+      }
+    }
+    const wantsHQ = HQ_KEYWORDS.some((k) => lastUserText.includes(k));
+    const imageQuality = wantsHQ ? "medium" : "low";
+
     // chat/completions 형식(messages)을 Responses API 형식(input)으로 변환.
     // system 메시지는 instructions로, 나머지는 input 배열로 넘긴다.
     let instructions = "";
@@ -54,7 +70,10 @@ export default async function handler(req, res) {
         model: selectedModel,
         instructions: instructions,
         input: input,
-        tools: [{ type: "web_search" }], // 모델이 필요하다고 판단하면 자동으로 웹 검색
+        tools: [
+          { type: "web_search" }, // 모델이 필요하다고 판단하면 자동으로 웹 검색
+          { type: "image_generation", quality: imageQuality, size: "1024x1024" },
+        ],
         // stream을 끄고 완성된 응답을 한 번에 받는다 (스트리밍 이벤트 형식 문제 회피, 안정성 우선)
       }),
     });
@@ -65,12 +84,15 @@ export default async function handler(req, res) {
       return res.status(response.status).json({ error: JSON.stringify(data) });
     }
 
-    // output 배열에서 실제 답변 텍스트만 뽑아낸다.
-    // (web_search_call 항목은 검색 기록이라 건너뛰고, message 항목의 output_text만 모은다)
+    // output 배열에서 답변 텍스트와, 생성된 이미지(있다면)를 뽑아낸다.
     let text = "";
     let usedSearch = false;
+    let generatedImage = null; // base64 PNG 데이터
     for (const item of data.output || []) {
       if (item.type === "web_search_call") usedSearch = true;
+      if (item.type === "image_generation_call" && item.result) {
+        generatedImage = item.result; // base64 문자열
+      }
       if (item.type === "message" && item.content) {
         for (const c of item.content) {
           if (c.type === "output_text") text += c.text;
@@ -78,7 +100,7 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(200).json({ text, usedSearch });
+    res.status(200).json({ text, usedSearch, generatedImage, imageQuality: generatedImage ? imageQuality : undefined });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
