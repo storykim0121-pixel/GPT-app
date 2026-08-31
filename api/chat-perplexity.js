@@ -40,6 +40,7 @@ export default async function handler(req, res) {
         model: selectedModel,
         messages: ppxMessages,
         temperature: 0.3,
+        return_related_questions: true, // 공식 앱처럼 후속 질문 추천을 받아온다
       }),
     });
 
@@ -49,8 +50,25 @@ export default async function handler(req, res) {
       return res.status(response.status).json({ error: JSON.stringify(data) });
     }
 
-    const text = data.choices?.[0]?.message?.content || "";
-    res.status(200).json({ text });
+    let text = data.choices?.[0]?.message?.content || "";
+
+    // Perplexity는 답변 본문과 별도로 citations(출처 URL 목록)를 함께 준다.
+    // 본문의 [1][2] 같은 번호가 실제로 뭘 가리키는지 알 수 있도록, 답변 아래에 출처 목록을 붙인다.
+    const citations = Array.isArray(data.citations) ? data.citations : [];
+    if (citations.length) {
+      const sourceLines = citations
+        .map((url, i) => {
+          let domain = url;
+          try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch (_) {}
+          return `${i + 1}. [${domain}](${url})`;
+        })
+        .join("\n");
+      text += `\n\n### 참고한 사이트\n${sourceLines}`;
+    }
+
+    const relatedQuestions = Array.isArray(data.related_questions) ? data.related_questions : [];
+
+    res.status(200).json({ text, relatedQuestions });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
