@@ -13,7 +13,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { messages } = req.body;
+    const { messages, model } = req.body;
+
+    // 허용된 모델만 쓰도록 검증. 지정 안 하거나 목록에 없으면 저렴한 기본값(Luna)으로.
+    const ALLOWED_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"];
+    const selectedModel = ALLOWED_MODELS.includes(model) ? model : "gpt-5.6-luna";
 
     // chat/completions 형식(messages)을 Responses API 형식(input)으로 변환.
     // system 메시지는 instructions로, 나머지는 input 배열로 넘긴다.
@@ -47,7 +51,7 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-5.6-luna",
+        model: selectedModel,
         instructions: instructions,
         input: input,
         tools: [{ type: "web_search" }], // 모델이 필요하다고 판단하면 자동으로 웹 검색
