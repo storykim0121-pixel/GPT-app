@@ -687,11 +687,42 @@ For health questions, give general information and gently remind the user to con
     msg.textContent = "위치 확인 중...";
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        await fetchAndShowWeather(pos.coords.latitude, pos.coords.longitude, "현재 위치");
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const label = await reverseGeocode(lat, lon);
+        await fetchAndShowWeather(lat, lon, label);
       },
       () => { msg.textContent = "위치 권한을 허용해주시면 바로 확인할 수 있어요."; },
       { timeout: 8000 }
     );
+  }
+
+  // 위도/경도 좌표를 사람이 읽을 수 있는 지역 이름으로 변환 (키 필요 없는 무료 서비스)
+  async function reverseGeocode(lat, lon) {
+    try {
+      const res = await fetch(
+        "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=" + lat +
+        "&longitude=" + lon + "&localityLanguage=ko"
+      );
+      const data = await res.json();
+
+      // administrative 배열은 보통 국가→광역시/도→구→동 순서로 상세해지므로,
+      // 가장 상세한 뒤쪽 항목들(구/동 단위)을 우선 사용해본다.
+      let parts = [];
+      if (data.localityInfo && Array.isArray(data.localityInfo.administrative)) {
+        const names = data.localityInfo.administrative
+          .map(a => a && a.name)
+          .filter(Boolean);
+        parts = names.slice(-3); // 가장 상세한 최대 3단계 (예: 서울특별시, 동작구, 사당동)
+      }
+      // 위 방법으로 못 찾으면 기존 방식(시/도 + 도시)으로 대체
+      if (!parts.length) {
+        parts = [data.principalSubdivision, data.city || data.locality].filter(Boolean);
+      }
+      return parts.length ? parts.join(" ") : "현재 위치";
+    } catch (err) {
+      return "현재 위치"; // 실패해도 날씨 조회 자체는 계속 진행
+    }
   }
 
   async function submitWeatherLocation() {
