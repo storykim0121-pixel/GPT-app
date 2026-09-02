@@ -353,29 +353,41 @@
   }
   .saved-panel-list { flex: 1; overflow-y: auto; padding: 12px 16px; overflow-x: hidden; }
   .saved-item {
-    border: 1px solid #eee; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
-    overflow-wrap: anywhere; word-break: break-word; max-width: 100%;
+    border: 1px solid #eee; border-radius: 14px; margin-bottom: 10px;
+    overflow: hidden; max-width: 100%;
   }
-  .saved-item .si-meta {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 12px; color: var(--muted); margin-bottom: 6px;
+  .si-header {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 14px 16px; border: none; background: transparent; cursor: pointer;
+    text-align: left; font-family: inherit;
   }
-  .saved-item .si-provider {
-    font-weight: 700; padding: 2px 8px; border-radius: 8px; background: #f2f2f2;
+  .si-header:active { background: #fafafa; }
+  .si-header-main { flex: 1; min-width: 0; }
+  .si-title {
+    font-size: 14.5px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .saved-item .si-question {
+  .si-header .si-provider {
+    font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px;
+    background: #f2f2f2; color: var(--muted); flex-shrink: 0;
+  }
+  .si-header .si-date { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .si-chevron { flex-shrink: 0; transition: transform .2s ease; color: var(--muted); }
+  .saved-item.open .si-chevron { transform: rotate(180deg); }
+  .si-body {
+    display: none; padding: 0 16px 14px;
+    overflow-wrap: anywhere; word-break: break-word;
+  }
+  .saved-item.open .si-body { display: block; }
+  .si-question {
     font-size: 13px; color: var(--muted); margin-bottom: 8px;
     padding-bottom: 8px; border-bottom: 1px dashed #eee;
-    overflow-wrap: anywhere; word-break: break-word;
   }
-  .saved-item .si-text {
-    font-size: 14px; line-height: 1.5;
-    overflow-wrap: anywhere; word-break: break-word;
-  }
-  .saved-item .si-text p { margin: 0 0 8px; }
-  .saved-item .si-text p:last-child { margin-bottom: 0; }
-  .saved-item .si-text a { color: #2964aa; }
-  .saved-item .si-remove {
+  .si-text { font-size: 14px; line-height: 1.5; }
+  .si-text p { margin: 0 0 8px; }
+  .si-text p:last-child { margin-bottom: 0; }
+  .si-text a { color: #2964aa; }
+  .si-remove {
     border: none; background: transparent; color: #c33; font-size: 12px;
     cursor: pointer; padding: 4px 0; margin-top: 8px;
   }
@@ -1216,6 +1228,13 @@ For health questions, give general information and gently remind the user to con
     document.getElementById("savedPanel").classList.remove("show");
   }
 
+  // 제목으로 쓸 짧은 요약 텍스트를 만든다 (질문 우선, 없으면 답변 앞부분)
+  function makeTitle(item) {
+    const source = item.question || item.text || "";
+    const clean = source.replace(/\s+/g, " ").trim();
+    return clean.length > 28 ? clean.slice(0, 28) + "…" : (clean || "저장된 대화");
+  }
+
   function renderSavedPanel() {
     const list = document.getElementById("savedPanelList");
     const items = getSavedItems();
@@ -1225,16 +1244,27 @@ For health questions, give general information and gently remind the user to con
     }
     const names = { gpt: "GPT", claude: "Claude", perplexity: "Perplexity" };
     list.innerHTML = items.map((it, i) => `
-      <div class="saved-item">
-        <div class="si-meta">
-          <span class="si-provider">${names[it.provider] || it.provider}</span>
-          <span>${it.savedAt}</span>
+      <div class="saved-item" id="savedItem${i}">
+        <button class="si-header" onclick="toggleSavedItem(${i})">
+          <div class="si-header-main">
+            <div class="si-title">${escapeHtml(makeTitle(it))}</div>
+            <div class="si-date">${names[it.provider] || it.provider} · ${it.savedAt}</div>
+          </div>
+          <svg class="si-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="si-body">
+          ${it.question ? `<div class="si-question">Q. ${escapeHtml(it.question)}</div>` : ""}
+          <div class="si-text">${renderMarkdown(it.text)}</div>
+          <button class="si-remove" onclick="removeSavedItem(${i})">삭제</button>
         </div>
-        ${it.question ? `<div class="si-question">Q. ${escapeHtml(it.question)}</div>` : ""}
-        <div class="si-text">${renderMarkdown(it.text)}</div>
-        <button class="si-remove" onclick="removeSavedItem(${i})">삭제</button>
       </div>
     `).join("");
+  }
+
+  // 저장 항목 헤더를 누르면 펼치거나 접는다.
+  function toggleSavedItem(index) {
+    const el = document.getElementById("savedItem" + index);
+    if (el) el.classList.toggle("open");
   }
 
   function removeSavedItem(index) {
