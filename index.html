@@ -324,6 +324,51 @@
   }
   .weather-modal-msg { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 16px; }
 
+  /* 답변에 붙는 저장 버튼 */
+  .save-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 8px; padding: 5px 12px; border-radius: 14px;
+    border: 1px solid #e5e5e5; background: #fff; color: var(--muted);
+    font-size: 12.5px; cursor: pointer; font-family: inherit;
+  }
+  .save-btn.saved { background: #fff7e0; border-color: #f0d878; color: #a67c00; }
+
+  /* 저장한 답변 패널 (전체 화면 슬라이드) */
+  .saved-panel {
+    position: fixed; inset: 0; background: #fff; z-index: 60;
+    display: flex; flex-direction: column;
+    transform: translateX(100%);
+    transition: transform .22s ease;
+  }
+  .saved-panel.show { transform: translateX(0); }
+  .saved-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; padding-top: calc(16px + env(safe-area-inset-top));
+    font-size: 17px; font-weight: 700; border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+  }
+  .saved-panel-close {
+    width: 32px; height: 32px; border-radius: 50%; border: none;
+    background: #f2f2f2; font-size: 15px; cursor: pointer;
+  }
+  .saved-panel-list { flex: 1; overflow-y: auto; padding: 12px 16px; }
+  .saved-item {
+    border: 1px solid #eee; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
+  }
+  .saved-item .si-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: var(--muted); margin-bottom: 6px;
+  }
+  .saved-item .si-provider {
+    font-weight: 700; padding: 2px 8px; border-radius: 8px; background: #f2f2f2;
+  }
+  .saved-item .si-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+  .saved-item .si-remove {
+    border: none; background: transparent; color: #c33; font-size: 12px;
+    cursor: pointer; padding: 4px 0; margin-top: 6px;
+  }
+  .saved-empty { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 14px; }
+
   /* 날씨 결과 카드 (대화창에 표시) */
   .weather-card {
     display: inline-block; background: #f7f7f8; border-radius: 18px;
@@ -376,7 +421,7 @@
 </head>
 <body>
   <header>
-    <button class="header-btn" aria-label="메뉴">
+    <button class="header-btn" aria-label="저장한 답변" onclick="openSavedPanel()">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="14" y2="16"/></svg>
     </button>
     <div class="header-title">My ChatGPT</div>
@@ -465,6 +510,15 @@
       <button class="weather-mylocation-btn" onclick="useMyLocation()">📍 현재 위치 사용</button>
       <div class="weather-modal-msg" id="weatherModalMsg"></div>
     </div>
+  </div>
+
+  <!-- 저장한 답변 패널 -->
+  <div class="saved-panel" id="savedPanel">
+    <div class="saved-panel-header">
+      <span>저장한 답변</span>
+      <button class="saved-panel-close" onclick="closeSavedPanel()">✕</button>
+    </div>
+    <div class="saved-panel-list" id="savedPanelList"></div>
   </div>
 
   <!-- 숨겨진 파일 입력들 -->
@@ -854,6 +908,7 @@ For health questions, give general information and gently remind the user to con
       }
       const full = data.text || "";
       bubble.innerHTML = renderMarkdown(full);
+      attachSaveButton(bubble, full);
       scrollToMessageTop(bubble);
       conversations[currentProvider].push({ role: "assistant", content: full });
     } catch (err) {
@@ -1074,6 +1129,92 @@ For health questions, give general information and gently remind the user to con
     return bubble;
   }
 
+  // --- 저장한 답변 기능 (브라우저에만 저장, localStorage 사용) ---
+  const SAVED_KEY = "gptapp_saved_answers";
+
+  function getSavedItems() {
+    try {
+      return JSON.parse(localStorage.getItem(SAVED_KEY) || "[]");
+    } catch (_) {
+      return [];
+    }
+  }
+  function setSavedItems(items) {
+    try {
+      localStorage.setItem(SAVED_KEY, JSON.stringify(items));
+    } catch (_) {
+      alert("저장 공간이 가득 찼거나 저장할 수 없어요.");
+    }
+  }
+
+  // 답변 말풍선 아래에 "저장" 버튼을 붙인다. text는 저장할 실제 답변 텍스트.
+  function attachSaveButton(bubble, text) {
+    if (!text) return; // 텍스트 없는 답변(이미지만 등)은 저장 버튼 생략
+    const id = "s_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+    const btn = document.createElement("button");
+    btn.className = "save-btn";
+    btn.textContent = "🔖 저장";
+    btn.onclick = () => toggleSave(btn, id, text);
+    bubble.appendChild(btn);
+  }
+
+  function toggleSave(btn, id, text) {
+    const items = getSavedItems();
+    if (btn.classList.contains("saved")) {
+      // 이미 저장된 상태 → 취소
+      const idx = items.findIndex((it) => it.btnId === id);
+      if (idx !== -1) items.splice(idx, 1);
+      setSavedItems(items);
+      btn.classList.remove("saved");
+      btn.textContent = "🔖 저장";
+    } else {
+      items.unshift({
+        btnId: id,
+        provider: currentProvider,
+        text: text,
+        savedAt: new Date().toLocaleString("ko-KR"),
+      });
+      setSavedItems(items);
+      btn.classList.add("saved");
+      btn.textContent = "✅ 저장됨";
+    }
+  }
+
+  function openSavedPanel() {
+    renderSavedPanel();
+    document.getElementById("savedPanel").classList.add("show");
+  }
+  function closeSavedPanel() {
+    document.getElementById("savedPanel").classList.remove("show");
+  }
+
+  function renderSavedPanel() {
+    const list = document.getElementById("savedPanelList");
+    const items = getSavedItems();
+    if (!items.length) {
+      list.innerHTML = '<div class="saved-empty">아직 저장한 답변이 없어요.<br>답변 아래 🔖 저장 버튼을 눌러보세요.</div>';
+      return;
+    }
+    const names = { gpt: "GPT", claude: "Claude", perplexity: "Perplexity" };
+    list.innerHTML = items.map((it, i) => `
+      <div class="saved-item">
+        <div class="si-meta">
+          <span class="si-provider">${names[it.provider] || it.provider}</span>
+          <span>${it.savedAt}</span>
+        </div>
+        <div class="si-text">${escapeHtml(it.text)}</div>
+        <button class="si-remove" onclick="removeSavedItem(${i})">삭제</button>
+      </div>
+    `).join("");
+  }
+
+  function removeSavedItem(index) {
+    const items = getSavedItems();
+    items.splice(index, 1);
+    setSavedItems(items);
+    renderSavedPanel();
+  }
+
   function scrollToBottom() {
     chat.scrollTop = chat.scrollHeight;
     updateScrollBtn();
@@ -1231,6 +1372,7 @@ For health questions, give general information and gently remind the user to con
         bubble.appendChild(rq);
       }
 
+      attachSaveButton(bubble, full);
       scrollToMessageTop(bubble);
       // 대화 기록에는 이미지가 생성됐다는 사실을 짧게 남겨(이미지 자체는 용량이 커서 기록에는 안 남김)
       // 다음 대화에서 맥락이 이어지게 한다.
