@@ -1084,8 +1084,11 @@ For health questions, give general information and gently remind the user to con
   function scrollToMessageTop(bubble) {
     const wrap = bubble.closest(".msg");
     if (!wrap) { scrollToBottom(); return; }
-    // 메시지 상단이 화면 위쪽에 오도록, 헤더 높이만큼 여유를 둔다.
-    const target = wrap.offsetTop - 12;
+    // offsetTop은 조상 요소 구조에 따라 틀어질 수 있어서, 화면에 실제 보이는 위치(rect) 차이로 계산한다.
+    // 이렇게 하면 헤더·탭·모델버튼 등 위쪽 요소가 늘어나도 항상 정확하게 메시지 시작점으로 이동한다.
+    const chatRect = chat.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const target = chat.scrollTop + (wrapRect.top - chatRect.top) - 12;
     chat.scrollTop = Math.max(0, target);
     updateScrollBtn();
   }
