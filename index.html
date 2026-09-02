@@ -27,17 +27,28 @@
   /* 상단 헤더 */
   header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px;
+    padding: 12px 12px;
     flex-shrink: 0;
+    gap: 6px;
   }
   .header-btn {
     width: 40px; height: 40px; border: none; background: transparent;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; border-radius: 10px; color: var(--text);
+    flex-shrink: 0;
   }
   .header-btn:active { background: #f0f0f0; }
+  .header-text-btn {
+    border: none; background: #f5f5f5; color: var(--text);
+    font-size: 13px; font-weight: 600; font-family: inherit;
+    padding: 8px 10px; border-radius: 12px; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .header-text-btn:active { background: #ebebeb; }
   .header-title {
-    font-size: 17px; font-weight: 600; color: var(--text);
+    font-size: 16px; font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex-shrink: 1; min-width: 0;
   }
 
   /* AI 선택 탭 */
@@ -445,13 +456,14 @@
 </head>
 <body>
   <header>
-    <button class="header-btn" aria-label="저장한 답변" onclick="openSavedPanel()">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="14" y2="16"/></svg>
-    </button>
+    <button class="header-text-btn" onclick="openSavedPanel()">📂 저장목록</button>
     <div class="header-title">My ChatGPT</div>
-    <button class="header-btn" aria-label="새 대화" onclick="newChat()">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-    </button>
+    <div style="display:flex; gap:6px;">
+      <button class="header-text-btn" onclick="saveWholeConversation()">💾 대화저장</button>
+      <button class="header-btn" aria-label="새 대화" onclick="newChat()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </button>
+    </div>
   </header>
 
   <div class="provider-tabs" id="providerTabs">
@@ -1192,7 +1204,7 @@ For health questions, give general information and gently remind the user to con
 
     const btn = document.createElement("button");
     btn.className = "save-btn";
-    btn.textContent = "🔖 대화 저장";
+    btn.textContent = "🔖 이 답변만 저장";
     btn.onclick = () => toggleSave(btn, id, text, question);
     bubble.appendChild(btn);
   }
@@ -1205,7 +1217,7 @@ For health questions, give general information and gently remind the user to con
       if (idx !== -1) items.splice(idx, 1);
       setSavedItems(items);
       btn.classList.remove("saved");
-      btn.textContent = "🔖 대화 저장";
+      btn.textContent = "🔖 이 답변만 저장";
     } else {
       items.unshift({
         btnId: id,
@@ -1216,7 +1228,7 @@ For health questions, give general information and gently remind the user to con
       });
       setSavedItems(items);
       btn.classList.add("saved");
-      btn.textContent = "✅ 대화 저장됨";
+      btn.textContent = "✅ 저장됨";
     }
   }
 
@@ -1230,16 +1242,55 @@ For health questions, give general information and gently remind the user to con
 
   // 제목으로 쓸 짧은 요약 텍스트를 만든다 (질문 우선, 없으면 답변 앞부분)
   function makeTitle(item) {
-    const source = item.question || item.text || "";
+    const source = item.title || item.question || item.text || "";
     const clean = source.replace(/\s+/g, " ").trim();
     return clean.length > 28 ? clean.slice(0, 28) + "…" : (clean || "저장된 대화");
+  }
+
+  // 지금 탭에서 나누고 있는 대화 전체를 하나의 묶음으로 저장한다.
+  function saveWholeConversation() {
+    const hist = conversations[currentProvider].filter((m) => m.role !== "system");
+    if (!hist.length) {
+      alert("저장할 대화 내용이 없어요.");
+      return;
+    }
+    const messages = hist.map((m) => ({ role: m.role, text: extractText(m.content) }));
+    const firstUserMsg = hist.find((m) => m.role === "user");
+    const title = firstUserMsg ? extractText(firstUserMsg.content) : "저장된 대화";
+
+    const items = getSavedItems();
+    items.unshift({
+      btnId: "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      kind: "conversation",
+      provider: currentProvider,
+      title: title,
+      messages: messages,
+      savedAt: new Date().toLocaleString("ko-KR"),
+    });
+    setSavedItems(items);
+    alert("현재 대화 전체를 저장했어요! (📷 첨부 이미지는 저장되지 않아요)");
+  }
+
+  // 저장 항목 하나의 펼침 내용을 kind에 따라 다르게 그린다.
+  function renderSavedBody(it) {
+    if (it.kind === "conversation") {
+      return (it.messages || []).map((m) => {
+        if (m.role === "user") {
+          return `<div class="si-question">Q. ${escapeHtml(m.text || "")}</div>`;
+        }
+        return `<div class="si-text" style="margin-bottom:14px;">${renderMarkdown(m.text || "")}</div>`;
+      }).join("");
+    }
+    // 기존 방식: 답변 하나만 저장한 경우
+    return (it.question ? `<div class="si-question">Q. ${escapeHtml(it.question)}</div>` : "")
+      + `<div class="si-text">${renderMarkdown(it.text)}</div>`;
   }
 
   function renderSavedPanel() {
     const list = document.getElementById("savedPanelList");
     const items = getSavedItems();
     if (!items.length) {
-      list.innerHTML = '<div class="saved-empty">아직 저장한 대화가 없어요.<br>답변 아래 🔖 대화 저장 버튼을 눌러보세요.</div>';
+      list.innerHTML = '<div class="saved-empty">아직 저장한 대화가 없어요.<br>헤더의 💾 대화저장으로 전체 대화를, 답변 아래 🔖 이 답변만 저장으로 답변 하나를 저장할 수 있어요.</div>';
       return;
     }
     const names = { gpt: "GPT", claude: "Claude", perplexity: "Perplexity" };
@@ -1247,14 +1298,13 @@ For health questions, give general information and gently remind the user to con
       <div class="saved-item" id="savedItem${i}">
         <button class="si-header" onclick="toggleSavedItem(${i})">
           <div class="si-header-main">
-            <div class="si-title">${escapeHtml(makeTitle(it))}</div>
+            <div class="si-title">${it.kind === "conversation" ? "💬 " : ""}${escapeHtml(makeTitle(it))}</div>
             <div class="si-date">${names[it.provider] || it.provider} · ${it.savedAt}</div>
           </div>
           <svg class="si-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="si-body">
-          ${it.question ? `<div class="si-question">Q. ${escapeHtml(it.question)}</div>` : ""}
-          <div class="si-text">${renderMarkdown(it.text)}</div>
+          ${renderSavedBody(it)}
           <button class="si-remove" onclick="removeSavedItem(${i})">삭제</button>
         </div>
       </div>
