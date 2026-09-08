@@ -404,6 +404,43 @@
   }
   .saved-empty { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 14px; }
 
+  /* 사진 크게보기 + 빨간펜 표시 */
+  .image-preview-overlay {
+    position: fixed; inset: 0; background: #111; z-index: 65;
+    display: none; flex-direction: column;
+  }
+  .image-preview-overlay.show { display: flex; }
+  .image-preview-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; padding-top: calc(14px + env(safe-area-inset-top));
+    flex-shrink: 0;
+  }
+  .image-preview-close {
+    border: none; background: rgba(255,255,255,.12); color: #fff;
+    padding: 8px 14px; border-radius: 12px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  .image-preview-title { color: rgba(255,255,255,.7); font-size: 12.5px; }
+  .image-preview-canvas-wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 8px 12px; min-height: 0; touch-action: none;
+  }
+  #imagePreviewCanvas {
+    max-width: 100%; max-height: 100%; border-radius: 8px;
+    touch-action: none; background: #000;
+  }
+  .image-preview-toolbar {
+    display: flex; gap: 8px; padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    flex-shrink: 0;
+  }
+  .image-preview-toolbar button {
+    flex: 1; padding: 12px; border-radius: 12px; border: none;
+    background: rgba(255,255,255,.12); color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .image-preview-toolbar button.ip-done { background: #ff3b30; }
+
   /* 날씨 결과 카드 (대화창에 표시) */
   .weather-card {
     display: inline-block; background: #f7f7f8; border-radius: 18px;
@@ -555,6 +592,22 @@
       <button class="saved-panel-close" onclick="closeSavedPanel()">✕</button>
     </div>
     <div class="saved-panel-list" id="savedPanelList"></div>
+  </div>
+
+  <!-- 사진 크게보기 + 빨간펜 표시 -->
+  <div class="image-preview-overlay" id="imagePreviewOverlay">
+    <div class="image-preview-header">
+      <button class="image-preview-close" onclick="closeImagePreview()">✕ 닫기</button>
+      <span class="image-preview-title">빨간펜으로 표시할 수 있어요</span>
+    </div>
+    <div class="image-preview-canvas-wrap">
+      <canvas id="imagePreviewCanvas"></canvas>
+    </div>
+    <div class="image-preview-toolbar">
+      <button onclick="undoAnnotation()">↩️ 되돌리기</button>
+      <button onclick="clearAnnotation()">🗑️ 지우기</button>
+      <button class="ip-done" onclick="applyAnnotationAndClose()">✅ 완료</button>
+    </div>
   </div>
 
   <!-- 숨겨진 파일 입력들 -->
@@ -1015,7 +1068,7 @@ For health questions, give general information and gently remind the user to con
     attachedImages.forEach((imgData, i) => {
       const item = document.createElement("div");
       item.className = "preview-item";
-      item.innerHTML = `<img src="${imgData.dataUrl}" alt="첨부 이미지 ${i + 1}">
+      item.innerHTML = `<img src="${imgData.dataUrl}" alt="첨부 이미지 ${i + 1}" onclick="openImagePreview(${i})">
         <div class="remove" onclick="removeImage(${i})">✕</div>`;
       preview.appendChild(item);
     });
@@ -1030,6 +1083,109 @@ For health questions, give general information and gently remind the user to con
     }
     renderPreview();
     updateSendBtn();
+  }
+
+  // --- 사진 크게보기 + 빨간펜 표시 ---
+  let ipCanvas, ipCtx, ipBaseImg, ipEditingIndex = null;
+  let ipStrokes = []; // 완료된 선들 (되돌리기/지우기용)
+  let ipCurrentStroke = null;
+  let ipDrawing = false;
+
+  function openImagePreview(index) {
+    ipEditingIndex = index;
+    ipStrokes = [];
+    ipCurrentStroke = null;
+
+    ipCanvas = document.getElementById("imagePreviewCanvas");
+    ipCtx = ipCanvas.getContext("2d");
+
+    ipBaseImg = new Image();
+    ipBaseImg.onload = () => {
+      // 원본 사진의 실제 픽셀 크기로 캔버스를 만든다 (화질 유지, 화면엔 CSS로 맞춰 표시)
+      ipCanvas.width = ipBaseImg.naturalWidth;
+      ipCanvas.height = ipBaseImg.naturalHeight;
+      redrawIpCanvas();
+      document.getElementById("imagePreviewOverlay").classList.add("show");
+      setupIpDrawingHandlers();
+    };
+    ipBaseImg.src = attachedImages[index].dataUrl;
+  }
+
+  function closeImagePreview() {
+    document.getElementById("imagePreviewOverlay").classList.remove("show");
+    ipEditingIndex = null;
+  }
+
+  function redrawIpCanvas() {
+    ipCtx.clearRect(0, 0, ipCanvas.width, ipCanvas.height);
+    ipCtx.drawImage(ipBaseImg, 0, 0, ipCanvas.width, ipCanvas.height);
+    // 빨간펜 선 두께는 사진 해상도에 비례하게 (화면에 작게 보여도 실제 픽셀 기준으로 그림)
+    const lineWidth = Math.max(4, ipCanvas.width * 0.008);
+    ipCtx.strokeStyle = "#ff3b30";
+    ipCtx.lineWidth = lineWidth;
+    ipCtx.lineCap = "round";
+    ipCtx.lineJoin = "round";
+    for (const stroke of ipStrokes) {
+      if (stroke.length < 2) continue;
+      ipCtx.beginPath();
+      ipCtx.moveTo(stroke[0].x, stroke[0].y);
+      for (let i = 1; i < stroke.length; i++) ipCtx.lineTo(stroke[i].x, stroke[i].y);
+      ipCtx.stroke();
+    }
+  }
+
+  // 화면에 표시된 캔버스 크기와 실제 캔버스 해상도가 달라서, 좌표를 실제 픽셀 기준으로 변환한다.
+  function ipGetCoords(e) {
+    const rect = ipCanvas.getBoundingClientRect();
+    const scaleX = ipCanvas.width / rect.width;
+    const scaleY = ipCanvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }
+
+  function setupIpDrawingHandlers() {
+    if (ipCanvas._handlersAttached) return; // 중복 등록 방지
+    ipCanvas._handlersAttached = true;
+
+    const start = (e) => {
+      e.preventDefault();
+      ipDrawing = true;
+      const p = ipGetCoords(e);
+      ipCurrentStroke = [p];
+      ipStrokes.push(ipCurrentStroke);
+    };
+    const move = (e) => {
+      if (!ipDrawing) return;
+      e.preventDefault();
+      const p = ipGetCoords(e);
+      ipCurrentStroke.push(p);
+      redrawIpCanvas();
+    };
+    const end = () => { ipDrawing = false; };
+
+    ipCanvas.addEventListener("pointerdown", start);
+    ipCanvas.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+  }
+
+  function undoAnnotation() {
+    ipStrokes.pop();
+    redrawIpCanvas();
+  }
+  function clearAnnotation() {
+    ipStrokes = [];
+    redrawIpCanvas();
+  }
+
+  // 빨간펜으로 표시한 결과를 실제 첨부 이미지로 저장하고 창을 닫는다.
+  function applyAnnotationAndClose() {
+    if (ipEditingIndex !== null) {
+      const dataUrl = ipCanvas.toDataURL("image/jpeg", 0.9);
+      attachedImages[ipEditingIndex] = { dataUrl, mime: "image/jpeg" };
+      renderPreview();
+    }
+    closeImagePreview();
   }
 
   function newChat() {
