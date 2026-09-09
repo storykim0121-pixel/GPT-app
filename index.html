@@ -1545,6 +1545,9 @@ For health questions, give general information and gently remind the user to con
 
   // 날씨 관련 질문인지 감지 (간단한 키워드 매칭)
   function isWeatherQuery(text) {
+    // 붙여넣은 긴 대화 등에 "날씨" 단어가 우연히 섞여 있는 경우까지 반응하지 않도록,
+    // 실제 짧은 질문(50자 이하)일 때만 날씨 기능으로 감지한다.
+    if (text.length > 50) return false;
     const keywords = ["날씨", "기온", "몇 도", "몇도", "비 와", "비와", "비 올", "비올",
       "눈 올", "눈올", "우산", "미세먼지", "황사", "폭염", "한파", "체감온도"];
     return keywords.some(k => text.includes(k));
