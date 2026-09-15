@@ -1,67 +1,46 @@
-// Vercel 서버리스 함수: 브라우저 대신 서버에서 Anthropic(Claude)을 호출한다.
-// API 키는 Vercel 환경변수(ANTHROPIC_API_KEY)에 저장되어 브라우저에 절대 노출되지 않는다.
+// Vercel 서버리스 함수: 브라우저 대신 서버에서 Perplexity를 호출한다.
+// API 키는 Vercel 환경변수(PERPLEXITY_API_KEY)에 저장되어 브라우저에 절대 노출되지 않는다.
+// Perplexity의 Sonar 모델은 항상 웹 검색이 자동으로 포함된다 (별도 설정 불필요).
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "POST만 허용됩니다." });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: "서버에 Claude API 키가 설정되지 않았습니다." });
+    return res.status(500).json({ error: "서버에 Perplexity API 키가 설정되지 않았습니다." });
   }
 
   try {
     const { messages, model } = req.body;
 
-    // 허용된 모델만 쓰도록 검증. 지정 안 하거나 목록에 없으면 저렴한 기본값(Haiku)으로.
-    const ALLOWED_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-5"];
-    const selectedModel = ALLOWED_MODELS.includes(model) ? model : "claude-haiku-4-5-20251001";
+    // 허용된 모델만 쓰도록 검증. 지정 안 하거나 목록에 없으면 저렴한 기본값(sonar)으로.
+    const ALLOWED_MODELS = ["sonar", "sonar-pro"];
+    const selectedModel = ALLOWED_MODELS.includes(model) ? model : "sonar";
 
-    // OpenAI 형식(messages 배열에 system 포함)을 Claude 형식(system 별도 + messages)으로 변환.
-    // 이미지도 Claude 방식(base64 + media_type)으로 변환해야 한다.
-    let system = "";
-    const claudeMessages = [];
-    for (const m of messages) {
-      if (m.role === "system") {
-        system = typeof m.content === "string" ? m.content : "";
-        continue;
+    // Perplexity는 이미지 입력(image_url)을 지원하지 않으므로,
+    // 이미지가 포함된 메시지는 텍스트 부분만 뽑아서 보낸다.
+    const ppxMessages = messages.map((m) => {
+      if (typeof m.content === "string") return m;
+      if (Array.isArray(m.content)) {
+        const textPart = m.content.find((p) => p.type === "text");
+        return { role: m.role, content: textPart ? textPart.text : "" };
       }
-      if (typeof m.content === "string") {
-        claudeMessages.push({ role: m.role, content: m.content });
-      } else if (Array.isArray(m.content)) {
-        const parts = [];
-        for (const p of m.content) {
-          if (p.type === "text") {
-            parts.push({ type: "text", text: p.text });
-          } else if (p.type === "image_url") {
-            // data:image/jpeg;base64,XXXXX 형태에서 media_type과 base64 데이터를 분리
-            const match = /^data:(image\/[a-zA-Z]+);base64,(.+)$/.exec(p.image_url.url);
-            if (match) {
-              parts.push({
-                type: "image",
-                source: { type: "base64", media_type: match[1], data: match[2] },
-              });
-            }
-          }
-        }
-        claudeMessages.push({ role: m.role, content: parts });
-      }
-    }
+      return m;
+    });
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: selectedModel,
-        max_tokens: 1500,
-        system: system,
-        messages: claudeMessages,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+        messages: ppxMessages,
+        temperature: 0.3,
+        return_related_questions: true, // 공식 앱처럼 후속 질문 추천을 받아온다
       }),
     });
 
@@ -71,15 +50,42 @@ export default async function handler(req, res) {
       return res.status(response.status).json({ error: JSON.stringify(data) });
     }
 
-    // content 배열에서 텍스트 블록만 모은다 (web_search_tool_result 등 다른 블록은 건너뜀)
-    let text = "";
-    let usedSearch = false;
-    for (const block of data.content || []) {
-      if (block.type === "text") text += block.text;
-      if (block.type === "server_tool_use" && block.name === "web_search") usedSearch = true;
+    let text = data.choices?.[0]?.message?.content || "";
+
+    // Perplexity는 답변 본문과 별도로 출처 정보를 함께 준다.
+    // 최신 응답엔 제목이 포함된 search_results가 오기도 하고, 없으면 URL만 담긴 citations가 온다.
+    // 본문의 [1][2] 같은 번호가 실제로 뭘 가리키는지 알 수 있도록, 답변 아래에 출처 목록을 붙인다.
+    const searchResults = Array.isArray(data.search_results) ? data.search_results : null;
+    const citations = Array.isArray(data.citations) ? data.citations : [];
+
+    let sourceLines = "";
+    if (searchResults && searchResults.length) {
+      // 제목이 있는 경우: "제목 (도메인)" 형태로 표시
+      sourceLines = searchResults
+        .map((r, i) => {
+          let domain = r.url || "";
+          try { domain = new URL(r.url).hostname.replace(/^www\./, ""); } catch (_) {}
+          const title = r.title || domain;
+          return `${i + 1}. [${title} (${domain})](${r.url})`;
+        })
+        .join("\n");
+    } else if (citations.length) {
+      // 제목 정보가 없는 경우: 기존처럼 도메인만 표시
+      sourceLines = citations
+        .map((url, i) => {
+          let domain = url;
+          try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch (_) {}
+          return `${i + 1}. [${domain}](${url})`;
+        })
+        .join("\n");
+    }
+    if (sourceLines) {
+      text += `\n\n### 참고한 사이트\n${sourceLines}`;
     }
 
-    res.status(200).json({ text, usedSearch });
+    const relatedQuestions = Array.isArray(data.related_questions) ? data.related_questions : [];
+
+    res.status(200).json({ text, relatedQuestions });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
