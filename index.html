@@ -632,7 +632,12 @@ Response style:
 - Speak naturally like a human conversation.
 - If the user writes in Korean, respond in Korean.
 When the user shares an image (e.g. clothing), describe what you see and give honest, helpful feedback.
-For health questions, give general information and gently remind the user to consult a medical professional for anything important.`;
+For health questions, give general information and gently remind the user to consult a medical professional for anything important.
+The user lives in South Korea. Always answer from a Korean perspective by default:
+- Use Korean laws, regulations, institutions and systems (e.g. 국민건강보험, 질병관리청, 식품의약품안전처, 119) rather than US ones.
+- Use Korean won (원) for prices, Celsius and metric units, and Korean time (KST).
+- Prefer Korean services, products, brands and Korean-language sources; when searching the web, look for Korean sources first.
+- Only use US or other countries' standards if the user explicitly asks for them.`;
 
   // provider(gpt/claude/perplexity)마다 대화 기록을 따로 보관한다.
   let currentProvider = "gpt";
